@@ -10,6 +10,8 @@ const UNAUTHED_ALLOWLIST = new Set([
   "assets/lilex-regular.woff2",
 ]);
 
+const REVALIDATE_FILES = new Set(["js/i18n.js", "js/dashboard.js"]);
+
 const resolveSafePath = (rel) => {
   if (!rel || rel.includes("\0") || rel.includes("..")) return null;
   const resolved = path.resolve(PUBLIC_ROOT, rel);
@@ -19,7 +21,7 @@ const resolveSafePath = (rel) => {
 
 export const publicStatic = new Elysia().get(
   "/public/*",
-  async ({ cookie, set, request, redirect, headers }) => {
+  async ({ cookie, set, request, redirect }) => {
     const rawPath = new URL(request.url).pathname.replace(/^\/public\/?/, "");
     let rel;
     try {
@@ -50,9 +52,13 @@ export const publicStatic = new Elysia().get(
       return { success: false, error: "Not found" };
     }
 
-    headers["content-type"] = f.type || "application/octet-stream";
-    headers["cache-control"] = allowUnauthed ? "public, max-age=86400" : "private, max-age=3600";
-    headers["x-content-type-options"] = "nosniff";
+    set.headers["content-type"] = f.type || "application/octet-stream";
+    set.headers["cache-control"] = REVALIDATE_FILES.has(rel)
+      ? "no-cache"
+      : allowUnauthed
+        ? "public, max-age=86400"
+        : "private, max-age=3600";
+    set.headers["x-content-type-options"] = "nosniff";
 
     return f;
   },

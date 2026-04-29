@@ -6,6 +6,7 @@ let headerSettings = null;
 let ratelimitSettings = null;
 let corsSettings = null;
 let filteringSettings = null;
+let ipdbStatus = null;
 let hasGeoSource = false;
 let demoMode = false;
 
@@ -125,13 +126,16 @@ const getDateRange = (chartData) => {
 };
 
 async function init() {
+  const storedAuth = localStorage.getItem("cap_auth");
+
   try {
-    const aboutRes = await fetch("/server/about");
-    const aboutData = await aboutRes.json();
+    const aboutData = storedAuth
+      ? await api("GET", "/about")
+      : await (await fetch("/server/about")).json();
     if (aboutData.demo) demoMode = true;
   } catch {}
 
-  if (!demoMode && !localStorage.getItem("cap_auth")) {
+  if (!demoMode && !storedAuth) {
     document.cookie = "cap_authed=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     return;
   }
@@ -3307,8 +3311,9 @@ async function loadIPDBSettings() {
   } else {
     container.querySelector("#ipdbUpdateBtn")?.addEventListener("click", async () => {
       const body = { mode: data.mode };
-      if (data.maxmindKey) body.maxmindKey = prompt("MaxMind license key:", "") || "";
-      if (data.ipinfoToken) body.ipinfoToken = prompt("IPInfo token:", "") || "";
+      if (data.maxmindKey)
+        body.maxmindKey = prompt(CapI18n?.t("MaxMind license key:"), "") || "";
+      if (data.ipinfoToken) body.ipinfoToken = prompt(CapI18n?.t("IPInfo token:"), "") || "";
       if (data.mode === "dbip") {
       } else if (data.mode === "maxmind" && !body.maxmindKey) return;
       else if (data.mode === "ipinfo" && !body.ipinfoToken) return;
