@@ -1,5 +1,4 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
-import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 
 import { db } from "./db.js";
@@ -9,7 +8,13 @@ import {
 } from "./instrumentation.js";
 import { isLoaded as ipdbIsLoaded, lookup as ipLookup } from "./ipdb.js";
 import valkeyRateLimit from "./ratelimit.js";
-import { checkCorsOrigin, getFiltering, getHeaders, getRatelimit } from "./settings-cache.js";
+import {
+  enforceCorsForSiteKey,
+  getFiltering,
+  getHeaders,
+  getRatelimit,
+  handleCorsPreflightForSiteKey,
+} from "./settings-cache.js";
 
 function hourlyBucket() {
   return String(Math.floor(Date.now() / 1000 / 3600) * 3600);
@@ -331,11 +336,17 @@ export const capServer = new Elysia({
       },
     }),
   )
-  .use(
-    cors({
-      origin: checkCorsOrigin,
-      methods: ["POST"],
-    }),
+  .onBeforeHandle(async ({ request, set, params }) => {
+    if (request.method === "OPTIONS") return;
+    if (await enforceCorsForSiteKey(request, set, params.siteKey)) return;
+    set.status = 403;
+    return { error: "Origin not allowed" };
+  })
+  .options("/:siteKey/challenge", ({ request, set, params }) =>
+    handleCorsPreflightForSiteKey(request, set, params.siteKey),
+  )
+  .options("/:siteKey/redeem", ({ request, set, params }) =>
+    handleCorsPreflightForSiteKey(request, set, params.siteKey),
   )
 
   .post("/:siteKey/challenge", async ({ set, params, request, server: srv }) => {

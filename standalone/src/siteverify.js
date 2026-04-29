@@ -1,21 +1,20 @@
-import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 
 import { db } from "./db.js";
-import { checkCorsOrigin } from "./settings-cache.js";
+import { enforceCorsForSiteKey, handleCorsPreflightForSiteKey } from "./settings-cache.js";
 
 export const siteverifyServer = new Elysia({
   detail: {
     tags: ["Challenges"],
   },
 })
-  .use(
-    cors({
-      origin: checkCorsOrigin,
-      methods: ["POST"],
-    }),
+  .options("/siteverify", ({ request, set }) =>
+    handleCorsPreflightForSiteKey(request, set, null),
   )
-  .post("/:siteKey?/siteverify", async ({ body, set, params }) => {
+  .options("/:siteKey/siteverify", ({ request, set, params }) =>
+    handleCorsPreflightForSiteKey(request, set, params.siteKey),
+  )
+  .post("/:siteKey?/siteverify", async ({ body, set, params, request }) => {
     const sitekeyraw = params.siteKey || false;
     const { secret, response } = body;
     let sitekey = false;
@@ -35,6 +34,11 @@ export const siteverifyServer = new Elysia({
     if (!secret || !response) {
       set.status = 400;
       return { success: false, error: "Missing required parameters" };
+    }
+
+    if (!(await enforceCorsForSiteKey(request, set, sitekey))) {
+      set.status = 403;
+      return { success: false, error: "Origin not allowed" };
     }
 
     const secretHash = await db.hget(`key:${sitekey}`, "secretHash");

@@ -1,4 +1,3 @@
-import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 import { db } from "./db.js";
 
@@ -68,18 +67,29 @@ const updateCache = async () => {
 updateCache();
 setInterval(updateCache, 1000 * 60 * 60);
 
+function setAssetCorsHeaders(set, request) {
+  const origin = request.headers.get("Origin");
+  set.headers.vary = "Origin";
+  set.headers["access-control-allow-origin"] = origin || "*";
+  set.headers["access-control-allow-methods"] = "GET";
+
+  const requestedHeaders = request.headers.get("access-control-request-headers");
+  if (requestedHeaders) {
+    set.headers["access-control-allow-headers"] = requestedHeaders;
+  }
+}
+
 export const assetsServer = new Elysia({
   prefix: "/assets",
   detail: { tags: ["Assets"] },
 })
-  .use(
-    cors({
-      origin: true,
-      methods: ["GET"],
-    }),
-  )
-  .onBeforeHandle(({ set }) => {
+  .onBeforeHandle(({ set, request }) => {
+    setAssetCorsHeaders(set, request);
     set.headers["Cache-Control"] = "max-age=31536000, immutable";
+  })
+  .options("/*", ({ set, request }) => {
+    setAssetCorsHeaders(set, request);
+    return new Response(null, { status: 204 });
   })
   .get("/widget.js", async ({ set }) => {
     set.headers["Content-Type"] = "text/javascript";
