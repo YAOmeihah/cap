@@ -8,7 +8,7 @@ const compatBundle = await readFile("src/cap.compat.min.js", "utf-8");
 const types = await readFile("src/cap.d.ts", "utf-8");
 
 assert.match(source, /const CAP_WIDGET_LOCALES = /);
-assert.match(source, /"initial-state": "验证您是真人"/);
+assert.match(source, /"initial-state": "点我验证您是真人"/);
 assert.match(source, /"verify-aria-label": "点击验证您是真人"/);
 assert.match(source, /"initial-state": "Verify you're human"/);
 assert.match(source, /data-cap-lang/);
@@ -20,12 +20,12 @@ assert.doesNotMatch(source, /class="credits"/);
 assert.doesNotMatch(source, /trycap\.dev\/\?\$\{new URLSearchParams/);
 assert.doesNotMatch(css, /\.captcha \.credits/);
 
-assert.match(bundle, /验证您是真人/);
+assert.match(bundle, /点我验证您是真人/);
 assert.match(bundle, /点击验证您是真人/);
 assert.doesNotMatch(bundle, /part="attribution"/);
 assert.doesNotMatch(bundle, /class="credits"/);
 
-assert.match(compatBundle, /验证您是真人/);
+assert.match(compatBundle, /点我验证您是真人/);
 assert.match(compatBundle, /data-cap-lang/);
 assert.doesNotMatch(compatBundle, /part="attribution"/);
 assert.doesNotMatch(compatBundle, /class="credits"/);

@@ -17,7 +17,7 @@
 
   const CAP_WIDGET_LOCALES = {
     "zh-CN": {
-      "initial-state": "验证您是真人",
+      "initial-state": "点我验证您是真人",
       "verifying-label": "验证中...",
       "solved-label": "验证通过",
       "error-label": "出错了",
