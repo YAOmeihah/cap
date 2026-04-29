@@ -15,6 +15,44 @@
     return fetch(u, conf);
   };
 
+  const CAP_WIDGET_LOCALES = {
+    "zh-CN": {
+      "initial-state": "点我验证您是真人",
+      "verifying-label": "验证中...",
+      "solved-label": "验证通过",
+      "error-label": "出错了",
+      "troubleshooting-label": "排查问题",
+      "wasm-disabled": "启用 WASM 可显著提升验证速度",
+      "verify-aria-label": "点击验证您是真人",
+      "verifying-aria-label": "正在验证您是真人，请稍候",
+      "verified-aria-label": "已验证",
+      "required-label": "请先完成真人验证",
+      "error-aria-label": "发生错误，请重试",
+    },
+    en: {
+      "initial-state": "Verify you're human",
+      "verifying-label": "Verifying...",
+      "solved-label": "You're human",
+      "error-label": "Error",
+      "troubleshooting-label": "Troubleshooting",
+      "wasm-disabled": "Enable WASM for significantly faster solving",
+      "verify-aria-label": "Click to verify you're a human",
+      "verifying-aria-label": "Verifying you're a human, please wait",
+      "verified-aria-label": "Verified",
+      "required-label": "Please verify you're human",
+      "error-aria-label": "An error occurred, please try again",
+    },
+  };
+
+  function normalizeCapLocale(value) {
+    const locale = String(value || "").toLowerCase();
+    if (locale === "en" || locale.startsWith("en-")) return "en";
+    if (locale === "zh" || locale === "zh-cn" || locale === "zh_cn" || locale.startsWith("zh-")) {
+      return "zh-CN";
+    }
+    return "zh-CN";
+  }
+
   function prng(seed, length) {
     function fnv1a(str) {
       let hash = 2166136261;
@@ -558,8 +596,15 @@
       }
     }
 
+    getCapLocale() {
+      return normalizeCapLocale(this.getAttribute("data-cap-lang"));
+    }
+
     getI18nText(key, defaultValue) {
-      return this.getAttribute(`data-cap-i18n-${key}`) || defaultValue;
+      const override = this.getAttribute(`data-cap-i18n-${key}`);
+      if (override) return override;
+      const locale = this.getCapLocale();
+      return CAP_WIDGET_LOCALES[locale]?.[key] || CAP_WIDGET_LOCALES.en[key] || defaultValue;
     }
 
     static get observedAttributes() {
@@ -569,7 +614,18 @@
         "onreset",
         "onerror",
         "data-cap-worker-count",
+        "data-cap-lang",
         "data-cap-i18n-initial-state",
+        "data-cap-i18n-verifying-label",
+        "data-cap-i18n-solved-label",
+        "data-cap-i18n-error-label",
+        "data-cap-i18n-troubleshooting-label",
+        "data-cap-i18n-wasm-disabled",
+        "data-cap-i18n-verify-aria-label",
+        "data-cap-i18n-verifying-aria-label",
+        "data-cap-i18n-verified-aria-label",
+        "data-cap-i18n-required-label",
+        "data-cap-i18n-error-aria-label",
         "required",
       ];
     }
@@ -604,6 +660,63 @@
       } else {
         this.#internals.setValidity({});
       }
+    }
+
+    #getStateI18n() {
+      const state = this.#div?.getAttribute("data-state") || "";
+      if (state === "verifying") {
+        return {
+          labelKey: "verifying-label",
+          labelFallback: "Verifying...",
+          ariaKey: "verifying-aria-label",
+          ariaFallback: "Verifying you're a human, please wait",
+        };
+      }
+      if (state === "done") {
+        return {
+          labelKey: "solved-label",
+          labelFallback: "You're human",
+          ariaKey: "verified-aria-label",
+          ariaFallback: "Verified",
+        };
+      }
+      if (state === "error") {
+        return {
+          labelKey: "error-label",
+          labelFallback: "Error",
+          ariaKey: "error-aria-label",
+          ariaFallback: "An error occurred, please try again",
+        };
+      }
+      return {
+        labelKey: "initial-state",
+        labelFallback: "Verify you're human",
+        ariaKey: "verify-aria-label",
+        ariaFallback: "Click to verify you're a human",
+      };
+    }
+
+    #refreshI18n() {
+      if (!this.#div) return;
+      const stateI18n = this.#getStateI18n();
+      const activeLabel = this.#div.querySelector(".label.active");
+      if (activeLabel) {
+        activeLabel.textContent = this.getI18nText(stateI18n.labelKey, stateI18n.labelFallback);
+      }
+      this.#div.setAttribute(
+        "aria-label",
+        this.getI18nText(stateI18n.ariaKey, stateI18n.ariaFallback),
+      );
+
+      const warningEl = this.#shadow?.querySelector(".warning");
+      if (warningEl) {
+        warningEl.innerText = this.getI18nText(
+          "wasm-disabled",
+          "Enable WASM for significantly faster solving",
+        );
+      }
+
+      this.#updateValidity();
     }
 
     initialize() {
@@ -641,12 +754,8 @@
         this.setWorkersCount(parseInt(value, 10));
       }
 
-      if (
-        name === "data-cap-i18n-initial-state" &&
-        this.#div &&
-        this.#div?.querySelector(".label.active")
-      ) {
-        this.animateLabel(this.getI18nText("initial-state", "Verify you're human"));
+      if ((name === "data-cap-lang" || name.startsWith("data-cap-i18n-")) && this.#div) {
+        this.#refreshI18n();
       }
 
       if (name === "required") {
@@ -1032,18 +1141,7 @@
       this.#div.innerHTML = `<div class="checkbox" part="checkbox"><svg class="progress-ring" viewBox="0 0 32 32"><circle class="progress-ring-bg" cx="16" cy="16" r="14"></circle><circle class="progress-ring-circle" cx="16" cy="16" r="14"></circle></svg></div><p part="label" class="label-wrapper"><span class="label active">${this.getI18nText(
         "initial-state",
         "Verify you're human",
-      )}</span></p><a part="attribution" aria-label="Secured by Cap" href="https://trycap.dev/?${new URLSearchParams(
-        // this attribution is only for our plausible analytics
-        // instancee. no personal data is collected.
-        {
-          utm_source: "cap_widget",
-          utm_medium: "referral",
-          utm_campaign: "widget",
-          utm_content: window.CAP_DISABLE_WIDGET_REF ? "" : location.hostname,
-          ref: window.CAP_DISABLE_WIDGET_REF ? "" : location.href || "",
-          sub: window.CAP_DISABLE_WIDGET_REF ? "" : document.referrer || "",
-        },
-      ).toString()}" class="credits" target="_blank" title="Secured by Cap: The self-hosted CAPTCHA for the modern web.">Cap</a>`;
+      )}</span></p>`;
 
       this.#shadow.innerHTML = `<style${window.CAP_CSS_NONCE ? ` nonce=${window.CAP_CSS_NONCE}` : ""}>%%capCSS%%</style>`;
 
@@ -1052,12 +1150,6 @@
 
     addEventListeners() {
       if (!this.#div) return;
-
-      this.#div.querySelector("a").addEventListener("click", (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        window.open("https://trycap.dev", "_blank");
-      });
 
       this.#div.addEventListener("click", () => {
         if (!this.#div.hasAttribute("disabled")) this.solve();
@@ -1195,7 +1287,7 @@
     }
 
     handleSolve(event) {
-      this.updateUI("done", this.getI18nText("solved-label", "You're a human"), true);
+      this.updateUI("done", this.getI18nText("solved-label", "You're human"), true);
       this.executeAttributeCode("onsolve", event);
       this.#internals?.setValidity?.({});
       this.#div?.classList.remove("invalid");
@@ -1209,7 +1301,7 @@
     }
 
     handleReset(event) {
-      this.updateUI("", this.getI18nText("initial-state", "I'm a human"));
+      this.updateUI("", this.getI18nText("initial-state", "Verify you're human"));
       this.executeAttributeCode("onreset", event);
       this.#updateValidity();
     }

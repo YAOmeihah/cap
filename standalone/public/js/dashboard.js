@@ -303,8 +303,8 @@ function renderIntegrationTab(key) {
   const sk = key.siteKey;
   const origin = location.origin;
   const endpoint = `${origin}/${sk}/`;
-  const widget = `<scr` + `ipt src="https://cdn.jsdelivr.net/npm/@cap.js/widget"></scr` + `ipt>
-<!-- pin a version in production, e.g. @cap.js/widget@3 -->
+  const widget = `<scr` + `ipt src="${origin}/assets/widget.js"></scr` + `ipt>
+<!-- served by this Cap Standalone instance -->
 
 <cap-widget data-cap-api-endpoint="${endpoint}"></cap-widget>`;
   const nodeSnippet = `const res = await fetch("${origin}/siteverify", {
