@@ -83,6 +83,9 @@ export const assetsServer = new Elysia({
   })
   .get("/widget.js", async ({ set }) => {
     set.headers["Content-Type"] = "text/javascript";
+    const localWidget = Bun.file("./public/assets/widget.js");
+    if (await localWidget.exists()) return localWidget;
+
     const content = await db.get("asset:widget.js");
     if (!content) {
       set.status = 503;
