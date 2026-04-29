@@ -1,0 +1,70 @@
+name: Publish Standalone Image
+
+on:
+  push:
+    tags:
+      - "standalone@*"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/yaomeihah/cap
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image version
+        id: version
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#standalone@}"
+
+          if [[ "$tag" == "$version" || ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.fork\.[0-9]+$ ]]; then
+            echo "Tag must match standalone@x.y.z.fork.N, got: $tag" >&2
+            exit 1
+          fi
+
+          package_version="$(node -p "require('./standalone/package.json').version")"
+          base_version="${version%%.fork.*}"
+
+          if [[ "$base_version" != "$package_version" ]]; then
+            echo "Tag base version $base_version does not match standalone/package.json version $package_version" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./standalone
+          file: ./standalone/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
