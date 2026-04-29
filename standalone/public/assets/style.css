@@ -2289,6 +2289,10 @@ input[type="range"]::-moz-range-progress {
     margin: 0 12px;
   }
 
+  .locale-switch {
+    margin: 8px 12px 8px;
+  }
+
   .settings-btn {
     margin: 0 4px 12px;
   }
