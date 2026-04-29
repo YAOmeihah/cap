@@ -5,6 +5,7 @@ const PUBLIC_ROOT = path.resolve("./public");
 
 const UNAUTHED_ALLOWLIST = new Set([
   "logo-small.webp",
+  "js/i18n.js",
   "assets/ibm-plex-sans.woff2",
   "assets/lilex-regular.woff2",
 ]);

@@ -7,6 +7,7 @@ const i18n = await read("public/js/i18n.js");
 const index = await read("public/index.html");
 const login = await read("public/login.html");
 const styles = await read("public/assets/style.css");
+const staticServer = await read("src/static.js");
 
 assert.match(i18n, /const STORAGE_KEY = "cap_locale"/);
 assert.match(i18n, /const DEFAULT_LOCALE = "zh-CN"/);
@@ -30,3 +31,5 @@ assert.match(login, /CapI18n\?\.apply\(document\.querySelector\("p\.err"\)\)/);
 
 assert.match(styles, /\.locale-switch/);
 assert.match(styles, /\.locale-switch button\.active/);
+
+assert.match(staticServer, /"js\/i18n\.js"/);
