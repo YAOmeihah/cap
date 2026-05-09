@@ -1,6 +1,33 @@
 <script setup>
-import { onMounted, onBeforeUnmount } from "vue";
+import { onMounted, onBeforeUnmount, ref } from "vue";
 import VPNavBarSearch from "vitepress/dist/client/theme-default/components/VPNavBarSearch.vue";
+
+const fromWidget = ref(false);
+const fromWidgetHost = ref("");
+
+function initFromWidgetBanner() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("utm_source") !== "cap_widget") return;
+    if (sessionStorage.getItem("cap-widget-banner-dismissed") === "1") return;
+    const host = (params.get("utm_content") || "").trim();
+    if (host && /^[a-z0-9.\-]+$/i.test(host) && host.length <= 80) {
+      fromWidgetHost.value = host;
+    }
+    fromWidget.value = true;
+    if (typeof window.plausible === "function") {
+      window.plausible("widget_banner_shown", { props: { host: fromWidgetHost.value || "(unknown)" } });
+    }
+  } catch {}
+}
+
+function dismissWidgetBanner() {
+  fromWidget.value = false;
+  try { sessionStorage.setItem("cap-widget-banner-dismissed", "1"); } catch {}
+  if (typeof window.plausible === "function") {
+    window.plausible("widget_banner_dismiss");
+  }
+}
 
 const SNIPPETS = {
   html:
@@ -88,6 +115,11 @@ function initTabs() {
       b.classList.add("active");
       renderCode(b.dataset.tab);
       positionIndicator(b);
+      try {
+        if (typeof window !== "undefined" && typeof window.plausible === "function") {
+          window.plausible("install_tab_click", { props: { tab: b.dataset.tab } });
+        }
+      } catch {}
     };
     b.addEventListener("click", handler);
     handlers.push([b, handler]);
@@ -109,6 +141,11 @@ function initTabs() {
       await navigator.clipboard.writeText(SNIPPETS[currentSnippet]);
       copyBtn.classList.add("copied");
       copyBtn.querySelector(".copy-label").textContent = "Copied";
+      try {
+        if (typeof window !== "undefined" && typeof window.plausible === "function") {
+          window.plausible("install_snippet_copy", { props: { tab: currentSnippet } });
+        }
+      } catch {}
       clearTimeout(copyTimer);
       copyTimer = setTimeout(() => {
         copyBtn.classList.remove("copied");
@@ -375,12 +412,59 @@ function initLiveArchitecture() {
   });
 }
 
+function track(name, props) {
+  try {
+    if (typeof window !== "undefined" && typeof window.plausible === "function") {
+      window.plausible(name, props ? { props } : undefined);
+    }
+  } catch {}
+}
+
+function initCtaTracking() {
+  const handlers = [];
+  document.querySelectorAll("#homev2 [data-cta]").forEach((el) => {
+    const handler = () => {
+      track("cta_click", {
+        cta: el.getAttribute("data-cta"),
+        location: el.getAttribute("data-cta-location") || "unknown",
+      });
+    };
+    el.addEventListener("click", handler);
+    handlers.push([el, handler]);
+  });
+  registerCleanup(() => handlers.forEach(([el, h]) => el.removeEventListener("click", h)));
+}
+
+async function loadGithubStars() {
+  const el = document.getElementById("homev2-gh-stars");
+  if (!el) return;
+  try {
+    const cached = sessionStorage.getItem("cap-gh-stars");
+    if (cached) {
+      el.textContent = cached;
+    }
+    const res = await fetch("https://api.github.com/repos/tiagozip/cap", {
+      headers: { Accept: "application/vnd.github+json" },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const n = data.stargazers_count;
+    if (typeof n !== "number") return;
+    const formatted = n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
+    el.textContent = formatted;
+    sessionStorage.setItem("cap-gh-stars", formatted);
+  } catch {}
+}
+
 onMounted(() => {
   document.documentElement.classList.add("home-v2-active");
+  initFromWidgetBanner();
   initTabs();
   loadStats();
   initCountUp();
   initLiveArchitecture();
+  initCtaTracking();
+  loadGithubStars();
 });
 
 onBeforeUnmount(() => {
@@ -392,7 +476,27 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div id="homev2">
+  <div id="homev2" :class="{ 'has-widget-banner': fromWidget }">
+    <Transition name="widget-banner">
+      <aside v-if="fromWidget" class="widget-banner" role="region" aria-label="From the Cap widget">
+        <div class="wrap widget-banner-wrap">
+          <span class="widget-banner-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12.5l4.2 4.2L19 7" />
+            </svg>
+          </span>
+          <p class="widget-banner-text">
+            <strong>You just verified you're human with Cap<template v-if="fromWidgetHost">&nbsp;on {{ fromWidgetHost }}</template>.</strong>
+            <span class="widget-banner-sub">You can close this tab. Or stick around if you're curious what Cap is.</span>
+          </p>
+          <button class="widget-banner-close" type="button" aria-label="Dismiss" @click="dismissWidgetBanner">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+      </aside>
+    </Transition>
     <header class="top">
       <div class="wrap wrap-hero">
         <div class="inner">
@@ -404,12 +508,14 @@ onBeforeUnmount(() => {
             <VPNavBarSearch class="homev2-search" />
           </div>
           <nav>
-            <a href="/guide/">Docs</a>
-            <a href="#features">Features</a>
+            <a href="/guide/" data-cta="docs" data-cta-location="nav">Docs</a>
+            <a href="#features" data-cta="features" data-cta-location="nav">Features</a>
             <a
               class="gh-link"
               href="https://github.com/tiagozip/cap"
               aria-label="GitHub"
+              data-cta="github"
+              data-cta-location="nav"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -422,7 +528,7 @@ onBeforeUnmount(() => {
                   d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.69-3.87-1.54-3.87-1.54-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.72-1.53-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.15 1.18.91-.25 1.89-.38 2.86-.38.97 0 1.95.13 2.86.38 2.19-1.49 3.15-1.18 3.15-1.18.62 1.58.23 2.75.11 3.04.73.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.25 5.67.41.35.78 1.05.78 2.11 0 1.52-.01 2.75-.01 3.12 0 .31.21.67.8.56C20.71 21.38 24 17.08 24 12c0-6.27-5.23-11.5-11.5-11.5z"
                 />
               </svg>
-              <span>5.2k</span>
+              <span id="homev2-gh-stars">6.2k</span>
             </a>
           </nav>
         </div>
@@ -442,9 +548,9 @@ onBeforeUnmount(() => {
           </p>
 
           <div class="actions">
-            <a class="btn primary" href="/guide/">Read the docs <span class="arr">→</span></a>
-            <a class="btn" href="/guide/demo.html">Demo <span class="arr">↗</span></a>
-            <a class="btn" href="https://github.com/tiagozip/cap">GitHub</a>
+            <a class="btn primary" href="/guide/" data-cta="docs" data-cta-location="hero">Read the docs <span class="arr">→</span></a>
+            <a class="btn" href="/guide/demo.html" data-cta="demo" data-cta-location="hero">Demo <span class="arr">↗</span></a>
+            <a class="btn" href="https://github.com/tiagozip/cap" data-cta="github" data-cta-location="hero">GitHub</a>
           </div>
         </div>
 
@@ -472,7 +578,7 @@ onBeforeUnmount(() => {
 
       <div class="wrap">
         <div class="trust">
-          <span class="trust-item">5k stars on GitHub</span><span class="trust-sep">·</span>
+          <span class="trust-item">6k stars on GitHub</span><span class="trust-sep">·</span>
           <span class="trust-item">Apache 2.0</span>
           <span class="trust-sep">·</span>
           <span class="trust-item">Zero dependencies</span>
@@ -886,9 +992,9 @@ onBeforeUnmount(() => {
               your users' traffic.
             </p>
             <div class="actions">
-              <a class="btn primary" href="/guide/">Read the docs <span class="arr">→</span></a>
-              <a class="btn" href="/guide/demo.html">Try the demo <span class="arr">↗</span></a>
-              <a class="btn" href="https://github.com/tiagozip/cap">Star on GitHub</a>
+              <a class="btn primary" href="/guide/" data-cta="docs" data-cta-location="cta_block">Read the docs <span class="arr">→</span></a>
+              <a class="btn" href="/guide/demo.html" data-cta="demo" data-cta-location="cta_block">Try the demo <span class="arr">↗</span></a>
+              <a class="btn" href="https://github.com/tiagozip/cap" data-cta="github" data-cta-location="cta_block">Star on GitHub</a>
             </div>
           </div>
         </div>
@@ -915,6 +1021,73 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
+.widget-banner {
+  background: color-mix(in oklab, var(--accent) 11%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--accent) 26%, transparent);
+  color: var(--fg);
+  font-family: var(--font);
+}
+#homev2 .wrap.widget-banner-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-block: 11px;
+}
+.widget-banner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+.widget-banner-text {
+  flex: 1;
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--fg-dim);
+  min-width: 0;
+}
+.widget-banner-text strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+.widget-banner-sub {
+  margin-left: 6px;
+}
+.widget-banner-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--fg-mute);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 120ms, color 120ms;
+}
+.widget-banner-close:hover { background: rgba(255, 255, 255, 0.06); color: var(--fg); }
+.widget-banner-enter-active,
+.widget-banner-leave-active { transition: max-height 260ms ease, opacity 180ms ease; overflow: hidden; }
+.widget-banner-enter-from,
+.widget-banner-leave-to { max-height: 0; opacity: 0; }
+.widget-banner-enter-to,
+.widget-banner-leave-from { max-height: 120px; opacity: 1; }
+
+@media (max-width: 720px) {
+  #homev2 .wrap.widget-banner-wrap { gap: 10px; align-items: flex-start; padding-block: 10px; }
+  .widget-banner-icon { margin-top: 2px; }
+  .widget-banner-text { font-size: 13px; }
+  .widget-banner-sub { display: block; margin-left: 0; margin-top: 2px; }
+}
+
 html.home-v2-active {
   --bg: #11111b;
   --surface: #181825;
@@ -1224,11 +1397,14 @@ html.home-v2-active main.main {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, transform .15s;
 }
 #homev2 .btn:hover {
   border-color: rgba(255, 255, 255, 0.3);
   background: rgba(255, 255, 255, 0.02);
+}
+#homev2 .btn:active {
+  transform: scale(.96);
 }
 #homev2 .btn.primary {
   background: var(--accent);
@@ -1240,6 +1416,7 @@ html.home-v2-active main.main {
   background: #fff;
   border-color: #fff;
 }
+
 #homev2 .btn .arr {
   opacity: 0.6;
   display: inline-block;

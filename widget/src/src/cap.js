@@ -81,6 +81,56 @@
     return result.substring(0, length);
   }
 
+  let _pakoPromise = null;
+  async function _inflateRaw(compressed) {
+    if (typeof DecompressionStream !== "undefined") {
+      try {
+        const ds = new DecompressionStream("deflate-raw");
+        const writer = ds.writable.getWriter();
+        const reader = ds.readable.getReader();
+        writer
+          .write(compressed)
+          .then(() => writer.close())
+          .catch(() => {});
+        const chunks = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+        }
+        let len = 0;
+        for (const c of chunks) len += c.length;
+        const out = new Uint8Array(len);
+        let off = 0;
+        for (const c of chunks) {
+          out.set(c, off);
+          off += c.length;
+        }
+        return out;
+      } catch {}
+    }
+    if (!_pakoPromise) {
+      _pakoPromise = new Promise((resolve, reject) => {
+        const url =
+          window.CAP_PAKO_URL ||
+          "https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako_inflate.min.js";
+        const script = document.createElement("script");
+        script.src = url;
+        script.onload = () => {
+          if (window.pako?.inflateRaw) resolve(window.pako);
+          else reject(new Error("[cap] pako loaded but inflateRaw is missing"));
+        };
+        script.onerror = () => {
+          _pakoPromise = null;
+          reject(new Error(`[cap] failed to load pako fallback from ${url}`));
+        };
+        document.head.appendChild(script);
+      });
+    }
+    const pako = await _pakoPromise;
+    return pako.inflateRaw(compressed);
+  }
+
   async function runInstrumentationChallenge(instrBytes) {
     const b64ToUint8 = (b64) => {
       const bin = atob(b64);
@@ -89,41 +139,8 @@
       return arr;
     };
 
-    var compressed = b64ToUint8(instrBytes);
-
-    const scriptText = await new Promise((resolve, reject) => {
-      try {
-        var ds = new DecompressionStream("deflate-raw");
-        var writer = ds.writable.getWriter();
-        var reader = ds.readable.getReader();
-        var chunks = [];
-        function pump(res) {
-          if (res.done) {
-            var len = 0,
-              off = 0;
-            for (var i = 0; i < chunks.length; i++) len += chunks[i].length;
-            var out = new Uint8Array(len);
-            for (var i = 0; i < chunks.length; i++) {
-              out.set(chunks[i], off);
-              off += chunks[i].length;
-            }
-            resolve(new TextDecoder().decode(out));
-          } else {
-            chunks.push(res.value);
-            reader.read().then(pump).catch(reject);
-          }
-        }
-        reader.read().then(pump).catch(reject);
-        writer
-          .write(compressed)
-          .then(() => {
-            writer.close();
-          })
-          .catch(reject);
-      } catch (e) {
-        reject(e);
-      }
-    });
+    const compressed = b64ToUint8(instrBytes);
+    const scriptText = new TextDecoder().decode(await _inflateRaw(compressed));
 
     return new Promise((resolve) => {
       var timeout = setTimeout(() => {
@@ -765,8 +782,14 @@
 
     async connectedCallback() {
       this.#host = this;
-      this.#shadow = this.attachShadow({ mode: "open" });
-      this.#div = document.createElement("div");
+
+      if (!this.shadowRoot) {
+        this.#shadow = this.attachShadow({ mode: "open" });
+      } else {
+        this.#shadow = this.shadowRoot;
+      }
+
+      if (!this.#div) this.#div = document.createElement("div");
       this.createUI();
       this.addEventListeners();
       this.initialize();
